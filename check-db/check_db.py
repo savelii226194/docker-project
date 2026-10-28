@@ -14,4 +14,3 @@ if __name__ == "__main__":
     host = os.getenv("DB_HOST", "db")
     port = int(os.getenv("DB_PORT", "5432"))
     print(check_db(host, port))
-
