@@ -24,4 +24,9 @@ jobs:
       - run: pip install flake8 pytest
       - run: cd check-db && flake8 . --max-line-length=100
       - run: cd check-db && pytest
-
+      - name: Проверить получение секрета
+        env:
+          TRAINING_MESSAGE: ${{ secrets.TRAINING_MESSAGE }}
+        run: |
+          test -n "$TRAINING_MESSAGE"
+          echo "Учебный секрет получен"
