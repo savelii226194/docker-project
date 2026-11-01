@@ -16,6 +16,7 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    environment: training
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,9 +25,11 @@ jobs:
       - run: pip install flake8 pytest
       - run: cd check-db && flake8 . --max-line-length=100
       - run: cd check-db && pytest
-      - name: Проверить получение секрета
+      - name: Проверить получение секретов
         env:
           TRAINING_MESSAGE: ${{ secrets.TRAINING_MESSAGE }}
+          TRAINING_TARGET: ${{ secrets.TRAINING_TARGET }}
         run: |
           test -n "$TRAINING_MESSAGE"
-          echo "Учебный секрет получен"
+          test -n "$TRAINING_TARGET"
+          echo "Секреты репозитория и окружения training получены"
