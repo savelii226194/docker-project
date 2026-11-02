@@ -33,3 +33,24 @@ jobs:
           test -n "$TRAINING_MESSAGE"
           test -n "$TRAINING_TARGET"
           echo "Секреты репозитория и окружения training получены"
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t check-db:ci ./check-db
+      - run: docker save check-db:ci -o image.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar
+
+  load:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+      - run: docker load -i image.tar
+      - run: docker image inspect check-db:ci --format '{{.Id}}'
