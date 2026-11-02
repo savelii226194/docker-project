@@ -33,3 +33,66 @@ jobs:
           test -n "$TRAINING_MESSAGE"
           test -n "$TRAINING_TARGET"
           echo "Секреты репозитория и окружения training получены"
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Собрать веб-приложение
+        run: docker build --build-arg APP_VERSION="$GITHUB_SHA" -t deploy-web:ci ./deploy-web
+      - run: docker save deploy-web:ci -o image.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar
+
+  publish:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+      - run: docker load -i image.tar
+      - name: Войти в Docker Hub
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: printf '%s' "$DOCKERHUB_TOKEN" | docker login --username "$DOCKERHUB_USERNAME" --password-stdin
+      - name: Назначить имя и версию образа
+        run: docker tag deploy-web:ci "$DOCKERHUB_USERNAME/deploy-web:$GITHUB_SHA"
+      - name: Отправить образ в Docker Hub
+        run: docker push "$DOCKERHUB_USERNAME/deploy-web:$GITHUB_SHA"
+  deploy:
+    needs: publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    concurrency:
+      group: vps-deployment
+      cancel-in-progress: false
+    env:
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Обновить приложение на VPS
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o ConnectTimeout=15 \
+            deploy@188.120.255.34 \
+            bash -s -- "$DOCKERHUB_USERNAME/deploy-web:$GITHUB_SHA" "$GITHUB_SHA" \
+            < deploy-web/deploy.sh
